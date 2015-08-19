@@ -31,7 +31,7 @@ namespace Serilog
         /// <param name="loggerSinkConfiguration">The logger configuration.</param>
         /// <param name="serverUrl">The base URL of the Seq server that log events will be written to.</param>
         /// <param name="restrictedToMinimumLevel">The minimum log event level required 
-        /// in order to write an event to the sink.</param>
+        /// in order to write an event to the sink. Ignored when <paramref name="levelSwitch"/> is specified.</param>
         /// <param name="batchPostingLimit">The maximum number of events to post in a single batch.</param>
         /// <param name="period">The time to wait between checking for event batches.</param>
         /// <param name="bufferBaseFilename">Path for a set of files that will be used to buffer events until they
@@ -40,6 +40,8 @@ namespace Serilog
         /// <param name="apiKey">A Seq <i>API key</i> that authenticates the client to the Seq server.</param>
         /// <param name="bufferFileSizeLimitBytes">The maximum size, in bytes, to which the buffer
         /// log file for a specific date will be allowed to grow. By default no limit will be applied.</param>
+        /// <param name="levelSwitch">A switch allowing the pass-through minimum level
+        /// to be changed at runtime.</param>
         /// <returns>Logger configuration, allowing configuration to continue.</returns>
         /// <exception cref="ArgumentNullException">A required parameter is null.</exception>
         public static LoggerConfiguration Seq(
@@ -50,7 +52,8 @@ namespace Serilog
             TimeSpan? period = null,
             string apiKey = null,
             string bufferBaseFilename = null,
-            long? bufferFileSizeLimitBytes = null)
+            long? bufferFileSizeLimitBytes = null,
+            LoggingLevelSwitch levelSwitch = null)
         {
             if (loggerSinkConfiguration == null) throw new ArgumentNullException("loggerSinkConfiguration");
             if (serverUrl == null) throw new ArgumentNullException("serverUrl");
@@ -58,13 +61,15 @@ namespace Serilog
 
             var defaultedPeriod = period ?? SeqSink.DefaultPeriod;
 
+            var sinkLevelSwitch = levelSwitch ?? new LoggingLevelSwitch(restrictedToMinimumLevel);
+
             ILogEventSink sink;
             if (bufferBaseFilename == null)
-                sink = new SeqSink(serverUrl, apiKey, batchPostingLimit, defaultedPeriod);
+                sink = new SeqSink(serverUrl, apiKey, batchPostingLimit, defaultedPeriod, sinkLevelSwitch);
             else
                 sink = new DurableSeqSink(serverUrl, bufferBaseFilename, apiKey, batchPostingLimit, defaultedPeriod, bufferFileSizeLimitBytes);
 
-            return loggerSinkConfiguration.Sink(sink, restrictedToMinimumLevel);
+            return loggerSinkConfiguration.Sink(sink, levelSwitch: sinkLevelSwitch);
         }
     }
 }

@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Serilog.Core;
 using Serilog.Debugging;
 using Serilog.Events;
 
@@ -17,7 +18,7 @@ namespace Serilog.Sinks.Seq
         readonly Timer _timer;
         readonly TimeSpan _period;
         readonly object _stateLock = new object();
-        LogEventLevel? _minimumAcceptedLevel;
+        private LoggingLevelSwitch _levelSwitch;
         volatile bool _unloading;
         readonly string _bookmarkFilename;
         readonly string _logFolder;
@@ -27,11 +28,12 @@ namespace Serilog.Sinks.Seq
         const string ApiKeyHeaderName = "X-Seq-ApiKey";
         const string BulkUploadResource = "api/events/raw";
 
-        public HttpLogShipper(string serverUrl, string bufferBaseFilename, string apiKey, int batchPostingLimit, TimeSpan period)
+        public HttpLogShipper(string serverUrl, string bufferBaseFilename, string apiKey, int batchPostingLimit, TimeSpan period, LoggingLevelSwitch levelSwitch = null)
         {
             _apiKey = apiKey;
             _batchPostingLimit = batchPostingLimit;
             _period = period;
+            _levelSwitch = levelSwitch ?? new LoggingLevelSwitch(LevelAlias.Minimum);
 
             var baseUri = serverUrl;
             if (!baseUri.EndsWith("/"))
@@ -84,7 +86,7 @@ namespace Serilog.Sinks.Seq
             get
             {
                 lock (_stateLock)
-                    return _minimumAcceptedLevel;
+                    return _levelSwitch != null ? (LogEventLevel?)_levelSwitch.MinimumLevel : null;
             }
         }
 
@@ -217,7 +219,9 @@ namespace Serilog.Sinks.Seq
             {
                 lock (_stateLock)
                 {
-                    _minimumAcceptedLevel = minimumAcceptedLevel;
+                    if (minimumAcceptedLevel.HasValue)
+                        _levelSwitch.MinimumLevel = minimumAcceptedLevel.Value;
+
                     if (!_unloading)
                         SetTimer();
                 }

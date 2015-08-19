@@ -18,6 +18,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using Serilog.Core;
 using Serilog.Debugging;
 using Serilog.Events;
 using Serilog.Formatting.Json;
@@ -31,16 +32,17 @@ namespace Serilog.Sinks.Seq
         readonly HttpClient _httpClient;
         const string BulkUploadResource = "api/events/raw";
         const string ApiKeyHeaderName = "X-Seq-ApiKey";
-        LogEventLevel? _minimumAcceptedLevel;
+        private LoggingLevelSwitch _levelSwitch;
 
         public const int DefaultBatchPostingLimit = 1000;
         public static readonly TimeSpan DefaultPeriod = TimeSpan.FromSeconds(2);
 
-        public SeqSink(string serverUrl, string apiKey, int batchPostingLimit, TimeSpan period)
+        public SeqSink(string serverUrl, string apiKey, int batchPostingLimit, TimeSpan period, LoggingLevelSwitch levelSwitch = null)
             : base(batchPostingLimit, period)
         {
             if (serverUrl == null) throw new ArgumentNullException("serverUrl");
             _apiKey = apiKey;
+            _levelSwitch = levelSwitch ?? new LoggingLevelSwitch(LevelAlias.Minimum);
 
             var baseUri = serverUrl;
             if (!baseUri.EndsWith("/"))
@@ -82,13 +84,14 @@ namespace Serilog.Sinks.Seq
                 throw new LoggingFailedException(string.Format("Received failed result {0} when posting events to Seq", result.StatusCode));
 
             var returned = await result.Content.ReadAsStringAsync();
-            _minimumAcceptedLevel = SeqApi.ReadEventInputResult(returned);
+            var minLevel = SeqApi.ReadEventInputResult(returned);
+
+            _levelSwitch.MinimumLevel = minLevel ?? LevelAlias.Minimum;
         }
 
         protected override bool CanInclude(LogEvent evt)
         {
-            return _minimumAcceptedLevel == null ||
-                (int)_minimumAcceptedLevel <= (int)evt.Level;
+            return _levelSwitch.MinimumLevel <= evt.Level;
         }
     }
 }
